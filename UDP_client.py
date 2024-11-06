@@ -42,15 +42,15 @@ def create_payload(filename):
 
 def create_UDP_segment(seq_num, ack_num, payload):
     additional_header = struct.pack('!II', seq_num, ack_num)
-    udp_src_port = 12345
-    udp_dest_port = 54321
+    # udp_src_port = 12345
+    udp_dest_port = 80
     udp_length = 8 + len(additional_header) + len(payload)
     udp_checksum = 0
-    udp_header = struct.pack('!HHHH', udp_src_port, udp_dest_port,
+    udp_header = struct.pack('!HHH', udp_dest_port,
                              udp_length, udp_checksum)
     segment = udp_header + additional_header + payload
     udp_checksum = calculate_checksum(segment)
-    udp_header = struct.pack('!HHHH', udp_src_port, udp_dest_port,
+    udp_header = struct.pack('!HHHH', udp_dest_port,
                              udp_length, udp_checksum)
     return udp_header + additional_header + payload
 
