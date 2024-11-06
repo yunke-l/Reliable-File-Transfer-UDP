@@ -1,4 +1,3 @@
-import os
 import struct
 import socket
 import sys
@@ -28,34 +27,24 @@ def calculate_checksum(segment):
 
     return ~checksum & 0xFFFF
 
-
-def create_payload(filename):
-    if not os.path.exists(filename):
-        print(f'File {filename} does not exist')
-        return
-
-    with open(filename, 'rb') as file:
-        file_data = file.read()
-
-    return file_data
-
-
-def create_UDP_segment(seq_num, ack_num, payload):
-    additional_header = struct.pack('!II', seq_num, ack_num)
+def create_UDP_segment():
+    file_name = input('Enter the file name: ')
     # udp_src_port = 12345
-    udp_dest_port = 80
-    udp_length = 8 + len(additional_header) + len(payload)
+    udp_dest_port = 7001
+    udp_length = 8 + len(file_name.encode())
     udp_checksum = 0
     udp_header = struct.pack('!HHH', udp_dest_port,
                              udp_length, udp_checksum)
-    segment = udp_header + additional_header + payload
+    segment = udp_header + file_name.encode()
     udp_checksum = calculate_checksum(segment)
-    udp_header = struct.pack('!HHHH', udp_dest_port,
+    udp_header = struct.pack('!HHH', udp_dest_port,
                              udp_length, udp_checksum)
-    return udp_header + additional_header + payload
+    return udp_header + file_name.encode()
 
 
-def create_IP_header(src_ip, dest_ip):
+def create_IP_header():
+    src_ip = '127.0.0.1'  # loopback address
+    dest_ip = '127.0.0.1'  # loopback address
     ip_version = 4
     ip_header_length = 5
     ip_tos = 0
@@ -76,26 +65,15 @@ def create_IP_header(src_ip, dest_ip):
 
 
 def main():
-    if len(sys.argv) != 4:
-        print('Usage: python3 UDP_client.py <src_ip> <dest_ip> <filename>')
-        sys.exit()
-
-    src_ip = sys.argv[1]
-    dest_ip = sys.argv[2]
-    filename = sys.argv[3]
-
-    payload = create_payload(filename)
-    if payload is None:
-        sys.exit()
-
-    udp_segment = create_UDP_segment(0, 0, payload)
-    ip_header = create_IP_header(src_ip, dest_ip)
+    udp_segment = create_UDP_segment()
+    ip_header = create_IP_header()
     packet = ip_header + udp_segment
 
-    sock = create_socket()
-    sock.sendto(packet, (dest_ip, 0))
-    sock.close()
-    print(f'File {filename} sent to {dest_ip}')
+    client_socket = create_socket()
+    client_socket.sendto(packet, ('127.0.0.1', 0))
+    # modifiedMessage, serverAddress = client_socket.recvfrom(65535)
+    # print('From the server: ', modifiedMessage.decode())
+    client_socket.close()
 
 
 if __name__ == '__main__':
