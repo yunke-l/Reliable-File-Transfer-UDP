@@ -36,4 +36,4 @@ ENV/
 env.bak/
 venv.bak/
 
-/trial/
+/trial
