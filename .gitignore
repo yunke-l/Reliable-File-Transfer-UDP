@@ -36,4 +36,5 @@ ENV/
 env.bak/
 venv.bak/
 
-/trial
+# test files
+/trial/

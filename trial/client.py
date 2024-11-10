@@ -41,10 +41,6 @@ def receive_udp(ip, port, single):
             print('data as hex:', data.hex())
             print('data length:', len(data))
 
-            if (len(data) > 28):
-                ip_header = data[0:20]
-                print('ip_header:', ip_header.hex())
-
             # need to skip the first 20 header.
             # Looks like kernal add one additional layer of ip header to package.
             # Unpack IP header
@@ -54,18 +50,19 @@ def receive_udp(ip, port, single):
             # print(ip_proto)
 
             # Unpack UDP header
-            udp_header = data[20:28]
-            udp_unpack = unpack('!HHHH', udp_header)
+            udp_header = data[20:36]
+            udp_unpack = unpack('!HHHIIH', udp_header)
 
-            source_port, dest_port, length, checksum = udp_unpack
+            # source_port, dest_port, length, checksum = udp_unpack
             # print(f"UDP Source Port: {source_port}, Dest Port: {dest_port}, Length: {length}")
 
-            payload = data[28:]
+            payload = data[36:]
 
             if single:
                 string_payload = payload.decode('utf-8')
                 print(f"Payload:\n{string_payload}")
-                return payload
+                payloads.append(payload)
+                return payloads
             else:
                 num_chunks_info = data[48:52]
                 num_chunks = struct.unpack('!I', num_chunks_info)[0]
@@ -140,7 +137,7 @@ if __name__ == "__main__":
 
     payloads = receive_file_chunks(CLIENT_IP, CLIENT_PORT)
 
-    received_file_bytes = b''.join(payload[8:] for payload in payloads)
+    received_file_bytes = b''.join(payload for payload in payloads)
 
     new_file_name = "copy_" + file_name
 
