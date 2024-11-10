@@ -132,7 +132,7 @@ def send_udp(
     )
 
     packet = udp_header + payload
-    print(f"sending: {seq_number}/{ack_number}")
+    print(f"sending: {seq_number+1}/{ack_number}")
     s.sendto(packet, (dst_ip, dst_port))
 
 
@@ -141,18 +141,21 @@ def send_file_chunks(content: bytes, chunk_size, src_ip, dst_ip, src_port, dst_p
         content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
     ]
     num_chunks = len(file_chunks)
+    batch_size = 50
+    delay = 1
 
-    for index_chunk, file_content in enumerate(file_chunks):
-
-        send_udp(
-            file_content,
-            src_ip,
-            dst_ip,
-            src_port,
-            dst_port,
-            index_chunk,
-            num_chunks,
-        )
+    for i in range(0, num_chunks, batch_size):
+        for j in range(i, min(i + batch_size, num_chunks)):
+            send_udp(
+                file_chunks[j],
+                src_ip,
+                dst_ip,
+                src_port,
+                dst_port,
+                j,
+                num_chunks,
+            )
+        sleep(delay)
 
 
 def file_exists(filename):
