@@ -70,6 +70,7 @@ def receive_udp(ip, port, single):
                 if len(payloads) >= ack_number:
                     print(len(payloads), ack_number)
                     print(f"Received last chunk woo ho!")
+
                     return payloads
 
     except KeyboardInterrupt:
@@ -132,11 +133,14 @@ if __name__ == "__main__":
              CLIENT_PORT, SERVER_PORT)
 
     payloads = receive_file_chunks(CLIENT_IP, CLIENT_PORT)
+    result = "success" + str(len(payloads))
+    received_packets_result = result.encode('utf-8')
 
     received_file_bytes = b''.join(payload for payload in payloads)
 
     new_file_name = "copy_" + file_name
 
     save_bytes_to_file(received_file_bytes, new_file_name)
+    send_udp(received_packets_result, SERVER_IP, CLIENT_PORT, SERVER_PORT)
 
     print(f"Saved the received file to {new_file_name}.")
