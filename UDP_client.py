@@ -1,11 +1,12 @@
-import socket
-import struct
+import os
 import sys
+from time import sleep
+import socket
 from struct import pack, unpack
+import struct
 
-
-CLIENT_IP = '127.0.0.1'
-SERVER_IP = '127.0.0.1'
+CLIENT_IP = "127.0.0.1"
+SERVER_IP = "127.0.0.1"
 
 CLIENT_PORT = 3434
 SERVER_PORT = 50100
@@ -16,10 +17,15 @@ def receive_udp(ip, port, single):
 
     try:
         server_socket = socket.socket(
-            socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
+            socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP
+        )
     except socket.error as msg:
-        print('Socket could not be created. Error Code : ' +
-              str(msg[0]) + ' Message ' + msg[1])
+        print(
+            "Socket could not be created. Error Code : "
+            + str(msg[0])
+            + " Message "
+            + msg[1]
+        )
         sys.exit()
 
     server_ip = ip
@@ -28,8 +34,7 @@ def receive_udp(ip, port, single):
     try:
         server_socket.bind((server_ip, server_port))
     except socket.error as msg:
-        print('Can not bind socket. Error Code : ' +
-              str(msg[0]) + ' Message ' + msg[1])
+        print("Can not bind socket. Error Code : " + str(msg[0]) + " Message " + msg[1])
         sys.exit()
 
     print(f"Server listening on {server_ip}:{server_port}")
@@ -38,12 +43,11 @@ def receive_udp(ip, port, single):
         while True:
             data, addr = server_socket.recvfrom(65535)
             print(f"Received message from {addr}")
-            print('data as hex:', data.hex())
-            print('data length:', len(data))
-
-            if (len(data) > 28):
+            print(data.hex())
+            print(len(data))
+            if len(data) > 28:
                 ip_header = data[0:20]
-                print('ip_header:', ip_header.hex())
+                print("ip_header:", ip_header.hex())
 
             # need to skip the first 20 header.
             # Looks like kernal add one additional layer of ip header to package.
@@ -51,27 +55,27 @@ def receive_udp(ip, port, single):
             # ip_header = data[20:40]
             # iph = unpack('!BBHHHBBH4s4s', ip_header)
             # ip_ihl_ver, ip_tos, ip_tot_len, ip_id, ip_frag_off, ip_ttl, ip_proto, ip_check, ip_saddr, ip_daddr = iph
-            # print(ip_proto)
+            # # print(ip_proto)
 
-            # Unpack UDP header
-            udp_header = data[20:28]
-            udp_unpack = unpack('!HHHH', udp_header)
+            # # Unpack UDP header
+            # udp_header = data[40:48]
+            # udp_unpack = unpack('!HHHH', udp_header)
 
-            source_port, dest_port, length, checksum = udp_unpack
-            # print(f"UDP Source Port: {source_port}, Dest Port: {dest_port}, Length: {length}")
+            # source_port, dest_port, length, checksum = udp_unpack
+            # # print(f"UDP Source Port: {source_port}, Dest Port: {dest_port}, Length: {length}")
 
             payload = data[28:]
 
             if single:
-                string_payload = payload.decode('utf-8')
+                string_payload = payload.decode("utf-8")
                 print(f"Payload:\n{string_payload}")
                 return payload
             else:
                 num_chunks_info = data[48:52]
-                num_chunks = struct.unpack('!I', num_chunks_info)[0]
+                num_chunks = struct.unpack("!I", num_chunks_info)[0]
 
                 index_info = data[52:56]
-                index = struct.unpack('!I', index_info)[0]
+                index = struct.unpack("!I", index_info)[0]
 
                 payloads.append(payload)
                 print(f"received {index}/{num_chunks-1}")
@@ -80,20 +84,26 @@ def receive_udp(ip, port, single):
                     return payloads
 
     except KeyboardInterrupt:
-        print('Server shutting down.')
+        print("Server shutting down.")
     finally:
         server_socket.close()
 
 
-def send_udp(payload: bytes, dst_ip, src_port, dst_port):
+def send_udp(
+    payload: bytes, src_ip, dst_ip, src_port, dst_port, sync_number, ack_number
+):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
     except socket.error as msg:
-        print('Socket could not be created. Error Code : ' +
-              str(msg[0]) + ' Message ' + msg[1])
+        print(
+            "Socket could not be created. Error Code : "
+            + str(msg[0])
+            + " Message "
+            + msg[1]
+        )
         sys.exit()
 
-    # # construct UDP header
+    # construct UDP header
     # ip_ihl = 5
     # ip_ver = 4
     # ip_tos = 0
@@ -114,36 +124,59 @@ def send_udp(payload: bytes, dst_ip, src_port, dst_port):
     udp_src_port = src_port
     udp_dst_port = dst_port
     udp_length = 8 + len(payload)
+    udp_sync = sync_number
+    udp_ack = ack_number
     checksum = 0
-    udp_header = pack('!HHHH', udp_src_port,
-                      udp_dst_port, udp_length, checksum)
+    udp_header = pack(
+        "!HHHIIH", udp_src_port, udp_dst_port, udp_length, udp_sync, udp_ack, checksum
+    )
 
     packet = udp_header + payload
 
     s.sendto(packet, (dst_ip, dst_port))
 
 
-def receive_file_chunks(ip, port):
-    return receive_udp(ip, port, True)
+def send_file_chunks(content: bytes, chunk_size, src_ip, dst_ip, src_port, dst_port):
+    file_chunks = [
+        content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
+    ]
+    num_chunks = len(file_chunks)
+
+    for index_chunk, file_content in enumerate(file_chunks):
+
+        send_udp(
+            file_content,
+            src_ip,
+            dst_ip,
+            src_port,
+            dst_port,
+            index_chunk,
+            num_chunks - 1,
+        )
 
 
-def save_bytes_to_file(file_bytes, file_name):
-    with open(file_name, 'wb') as file:
-        file.write(file_bytes)
+def file_exists(filename):
+    return os.path.isfile(filename)
+
+
+def load_file_as_bytes(filename):
+    with open(filename, "rb") as file:
+        file_content_bytes = file.read()
+        return file_content_bytes
 
 
 if __name__ == "__main__":
-    file_name = input("File name: ")
-    file_name_bytes = file_name.encode('utf-8')
-    send_udp(file_name_bytes, SERVER_IP,
-             CLIENT_PORT, SERVER_PORT)
+    filename_bytes = receive_udp(SERVER_IP, SERVER_PORT, True)
 
-    payloads = receive_file_chunks(CLIENT_IP, CLIENT_PORT)
+    filename = filename_bytes.decode("utf-8")
+    if not file_exists(filename):
+        print("File not exist system close")
+        sys.exit(0)
 
-    received_file_bytes = b''.join(payload[8:] for payload in payloads)
+    content_bytes = load_file_as_bytes(filename)
 
-    new_file_name = "copy_" + file_name
+    sleep(2)
 
-    save_bytes_to_file(received_file_bytes, new_file_name)
-
-    print(f"Saved the received file to {new_file_name}.")
+    send_file_chunks(
+        content_bytes, 1000, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT
+    )
