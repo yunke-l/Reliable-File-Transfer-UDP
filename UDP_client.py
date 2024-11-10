@@ -66,9 +66,9 @@ def receive_udp(ip, port, single):
             else:
                 payloads.append(payload)
                 print(f"received {seq_number}/{ack_number}")
-                if seq_number == ack_number-1:
-                    print(len(payloads))
-                if len(payloads) >= ack_number-1:
+
+                if len(payloads) >= ack_number:
+                    print(len(payloads), ack_number)
                     print(f"Received last chunk woo ho!")
                     return payloads
 
