@@ -1,6 +1,8 @@
 import os
 import sys
 from time import sleep
+import time
+from datetime import timedelta
 import socket
 from struct import pack, unpack
 import struct
@@ -10,6 +12,8 @@ SERVER_IP = "127.0.0.1"
 
 CLIENT_PORT = 3434
 SERVER_PORT = 50100
+
+CHUNK_SIZE = 1300
 
 
 def receive_udp(ip, port, single):
@@ -169,17 +173,43 @@ def load_file_as_bytes(filename):
 
 
 if __name__ == "__main__":
+    #  receiving request for file name
     filename_bytes = receive_udp(SERVER_IP, SERVER_PORT, True)
-
     filename = filename_bytes.decode("utf-8")
     if not file_exists(filename):
         print("File not exist system close")
+        with open("downloadLog.txt", "w") as f:
+            f.write("File does not exist!")
         sys.exit(0)
+    start_time = time.time()  # record start time
 
+    # load file as bytes
     content_bytes = load_file_as_bytes(filename)
+    file_size = len(content_bytes)
+    packet_number = file_size // CHUNK_SIZE + 1
 
+    # sending requested file
     sleep(2)
-
     send_file_chunks(
-        content_bytes, 1300, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT
+        content_bytes, CHUNK_SIZE, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT
     )
+
+    # receiving transferring result
+    result = receive_udp(SERVER_IP, SERVER_PORT, True)
+    end_time = time.time()  # record end time
+    time_taken = end_time - start_time
+    time_taken_formatted = str(timedelta(seconds=time_taken))
+    print(f"Time taken to transfer the file: {end_time - start_time} seconds")
+    result_str = result.decode("utf-8")
+    packet_received = int(result_str[7:])
+    print(result_str)
+
+    # write log
+    if 'success' in result_str:
+        with open('downloadLog.txt', 'w') as f:
+            f.write(f"Name of the transferred file: {filename}\n")
+            f.write(f"Size of the transferred file: {file_size} bytes\n")
+            f.write(f"The number of packets sent from the server: {packet_number}\n")
+            f.write(f"The number of retransmitted packets from the server: 0\n")
+            f.write(f"The number of packets received by the client: {packet_received}\n")
+            f.write(f"Time taken to transfer the file: {end_time - start_time} seconds\n")
