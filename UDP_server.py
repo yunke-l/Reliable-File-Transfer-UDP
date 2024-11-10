@@ -47,11 +47,13 @@ def receive_udp(ip, port, single):
         while True:
             data, addr = server_socket.recvfrom(65535)
             print(f"Received message from {addr}")
-            print(data.hex())
-            print(len(data))
-            if len(data) > 28:
-                ip_header = data[0:20]
-                print("ip_header:", ip_header.hex())
+
+            ## check the ip header and packet in raw socket
+            # print(data.hex())
+            # print(len(data))
+            # if len(data) > 28:
+            #     ip_header = data[0:20]
+            #     print("ip_header:", ip_header.hex())
 
             # need to skip the first 20 header.
             # Looks like kernal add one additional layer of ip header to package.
@@ -197,7 +199,7 @@ if __name__ == "__main__":
     # receiving transferring result
     result = receive_udp(SERVER_IP, SERVER_PORT, True)
     end_time = time.time()  # record end time
-    time_taken = end_time - start_time
+    time_taken = int(end_time - start_time)
     time_taken_formatted = str(timedelta(seconds=time_taken))
     print(f"Time taken to transfer the file: {end_time - start_time} seconds")
     result_str = result.decode("utf-8")
@@ -212,4 +214,4 @@ if __name__ == "__main__":
             f.write(f"The number of packets sent from the server: {packet_number}\n")
             f.write(f"The number of retransmitted packets from the server: 0\n")
             f.write(f"The number of packets received by the client: {packet_received}\n")
-            f.write(f"Time taken to transfer the file: {end_time - start_time} seconds\n")
+            f.write(f"Time taken to transfer the file: {time_taken_formatted}\n")

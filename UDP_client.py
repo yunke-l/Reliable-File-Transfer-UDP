@@ -69,7 +69,7 @@ def receive_udp(ip, port, single):
 
                 if len(payloads) >= ack_number:
                     print(len(payloads), ack_number)
-                    print(f"Received last chunk woo ho!")
+                    print(f"Received last packet, yay!")
 
                     return payloads
 
