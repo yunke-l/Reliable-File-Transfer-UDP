@@ -5,11 +5,12 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+*pem
 
 # test files
 trial/
 dataTransfer.txt
 tenMB.txt
 test_*
-copy_*
+copy*
 downloadLog.txt
