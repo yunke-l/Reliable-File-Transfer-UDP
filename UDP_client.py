@@ -2,15 +2,20 @@ import socket
 import struct
 import sys
 from struct import pack, unpack
+from time import sleep
 
-
-CLIENT_SENDING_PORT = 3434
-CLIENT_RECEIVING_PORT = 3435
+# CLIENT_IP = "172.31.27.101"
+# SERVER_IP = "172.31.31.50"
+CLIENT_IP = "127.0.0.1"
+SERVER_IP = "127.0.0.1"
+CLIENT_PORT = 3434
 SERVER_PORT = 50100
 
-def create_sending_socket():
+# creating socket
+def create_socket():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
     except socket.error as msg:
         print(
             "Socket could not be created. Error Code : "
@@ -21,63 +26,8 @@ def create_sending_socket():
         sys.exit()
     return s
 
-def create_receiving_socket():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
-    except socket.error as msg:
-        print(
-            "Socket could not be created. Error Code : "
-            + str(msg[0])
-            + " Message "
-            + msg[1]
-        )
-        sys.exit()
-    return s
-
-
-def receive_udp(socket):
-    payloads = []
-    client_socket = socket
-    try:
-        while True:
-            data, addr = client_socket.recvfrom(65535)
-
-            if len(data) <= 36:
-                print('not a data packet')
-                continue
-
-
-            udp_header = data[20:36]
-            udp_unpack = unpack('!HHHIIH', udp_header)
-            source_port, dest_port, length, seq_number, ack_number, checksum = udp_unpack
-            print(f"receiving from {addr[0]}:{source_port} with packets of length {length}")
-            with open('dataTransfer.txt', 'a') as f:
-                f.write(f"{seq_number},")
-
-            payload = data[36:]
-            payloads.append(payload)
-            print(f"received {seq_number}/{ack_number}")
-
-            if len(payloads) >= ack_number:
-                print(len(payloads), ack_number)
-                print(f"Received last packet, yay!")
-                return payloads
-
-    except KeyboardInterrupt:
-        print('Shutting down.')
-
-
-def send_udp(passed_socket, payload: bytes, src_ip, dst_ip, dst_port, src_port):
-    s = passed_socket
-    s.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
-    # create udp header
-    udp_src_port = src_port
-    udp_dst_port = dst_port
-    udp_length = 8 + len(payload)
-    checksum = 0
-    udp_header = pack('!HHHH', udp_src_port,
-                      udp_dst_port, udp_length, checksum)
-    # create the IP header
+# create the IP header
+def create_IP_header(src_ip, dst_ip, payload: bytes):
     ip_ihl = 5
     ip_ver = 4
     ip_tos = 0
@@ -91,50 +41,194 @@ def send_udp(passed_socket, payload: bytes, src_ip, dst_ip, dst_port, src_port):
     ip_daddr = socket.inet_aton(dst_ip)
     ip_ihl_ver = (ip_ver << 4) + ip_ihl
 
-    ip_header = struct.pack('!BBHHHBBH4s4s', ip_ihl_ver, ip_tos, ip_tot_len, ip_id, ip_frag_off, ip_ttl, ip_proto, ip_check, ip_saddr, ip_daddr)
+    ip_header = struct.pack(
+        "!BBHHHBBH4s4s",
+        ip_ihl_ver,
+        ip_tos,
+        ip_tot_len,
+        ip_id,
+        ip_frag_off,
+        ip_ttl,
+        ip_proto,
+        ip_check,
+        ip_saddr,
+        ip_daddr,
+    )
+    return ip_header
+
+# construct UDP header
+def create_UDP_header(src_port, dst_port, payload: bytes,
+                      seq_number, ack_number):
+    udp_src_port = src_port
+    udp_dst_port = dst_port
+    udp_length = 16 + len(payload)
+    checksum = 0
+    udp_seq = seq_number
+    udp_ack = ack_number
+    udp_header = pack("!HHHiiH", udp_src_port, udp_dst_port,
+                      udp_length, udp_seq, udp_ack, checksum)
+    return udp_header
+
+# receive UDP packets
+def receive_udp(passed_socket, ip, port):
+    receiving_socket = passed_socket
+    try:
+        receiving_socket.bind((ip, port))
+    except socket.error as msg:
+        if msg.errno == 98:  # Address already in use
+            pass
+        else:
+            print("Cannot bind socket. Error Code : " + str(msg[0]) + " Message " + msg[1])
+            sys.exit()
+
+    print(f"Listening on port {port}")
+    try:
+        data, addr = receiving_socket.recvfrom(65535)
+    except KeyboardInterrupt:
+        print("Shutting down.")
+        return None
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
+    return {"data": data, "addr": addr}
+
+# extract payloads from packets
+def extract_payloads(packet):
+    if packet is None:
+        return None
+
+    data = packet["data"]
+    addr = packet["addr"]
+    if len(data) < 36:  # if the packet is not a data packet
+        print("Not a data packet")
+        return None
+
+    # unpack udp header
+    udp_header = data[20:36]
+    udp_unpack = unpack("!HHHiiH", udp_header)
+    udp_fields = {
+        "source_port": udp_unpack[0],
+        "dest_port": udp_unpack[1],
+        "udp_length": udp_unpack[2],
+        "seq_number": udp_unpack[3],
+        "ack_number": udp_unpack[4],
+        "checksum": udp_unpack[5],
+    }
+
+    # unpack the ip header
+    ip_header = data[:20]
+    ip_unpack = unpack("!BBHHHBBH4s4s", ip_header)
+    ip_fields = {
+        "ip_ihl_ver": ip_unpack[0],
+        "ip_tos": ip_unpack[1],
+        "ip_tot_len": ip_unpack[2],
+        "ip_id": ip_unpack[3],
+        "ip_frag_off": ip_unpack[4],
+        "ip_ttl": ip_unpack[5],
+        "ip_proto": ip_unpack[6],
+        "ip_check": ip_unpack[7],
+        "ip_saddr": ip_unpack[8],
+        "ip_daddr": ip_unpack[9],
+    }
+
+    str_ip_saddr = socket.inet_ntoa(ip_fields["ip_saddr"])  # source ip string
+    str_ip_daddr = socket.inet_ntoa(ip_fields["ip_daddr"])  # destination ip string
+    print(f"IP: {str_ip_saddr} -> {str_ip_daddr} with packets "
+          f"of length {ip_fields['ip_tot_len']}\n")
+
+    # filtering packet: the packet is not from the server or to the client
+    if str_ip_saddr != SERVER_IP or str_ip_daddr != CLIENT_IP:
+        print('Not from the server or to the client')
+        return None
+
+    # filtering packet: in case loopback packet
+    if udp_fields["dest_port"] != CLIENT_PORT or udp_fields["source_port"] != SERVER_PORT:
+        print('Not from the server port or to the client port')
+        return None
+    with open('dataTransferAtC.txt', 'a') as f:
+        f.write(f"UDP: receiving from {addr[0]}:{udp_fields['source_port']} "
+                f"with packets of length {udp_fields['udp_length']+20}\n")
+        f.write(f"IP: {str_ip_saddr} -> {str_ip_daddr} "
+                f"with packets of length {ip_fields['ip_tot_len']}\n")
+        f.write(f"{udp_fields['seq_number']},")
+
+    payload = data[36:]
+    print(f"Received packet with sequence number {udp_fields['seq_number']}")
+
+    return [payload, udp_fields["seq_number"], udp_fields["ack_number"]]
+
+def send_udp(passed_socket, payload: bytes, src_ip, dst_ip,
+             src_port, dst_port, seq_number, ack_number):
+    ip_header = create_IP_header(src_ip, dst_ip, payload)
+    udp_header = create_UDP_header(src_port, dst_port,
+                                   payload, seq_number, ack_number)
 
     packet = ip_header + udp_header + payload
     print(f"Sending to {dst_ip}:{dst_port} with length {len(packet)}")
-    s.sendto(packet, (dst_ip, 0))
+    passed_socket.sendto(packet, (dst_ip, 0))
 
-
-def save_bytes_to_file(file_bytes, file_name):
-    with open(file_name, 'wb') as file:
-        file.write(file_bytes)
-
+# def communicate_file_transfer(passed_socket, filename: bytes, src_ip, dst_ip,
+#                               src_port, dst_port):
+#     ip_header = create_IP_header(src_ip, dst_ip, filename)
+#     udp_header = create_UDP_header(src_port, dst_port,
+#                                    filename, -1, 0)
+#     packet = ip_header + udp_header + filename
+#     print(f"Sending to {dst_ip}:{dst_port} with length {len(packet)}")
+#     passed_socket.sendto(packet, (dst_ip, 0))
+#     filesize_data, addr =   passed_socket.recvfrom(65535)
+#     filesize = int(filesize_data.decode("utf-8"))
+#     return filesize
 
 def main():
-    # asking for arguments
-    if len(sys.argv) != 3:
-        print("Usage: python3 client.py <source_IP> <destination_IP>")
-        sys.exit(1)
-    # create a client socket
-    client_snd_socket = create_sending_socket()
-    client_rcv_socket = create_receiving_socket()
-
+    current_seq = 0
+    current_ack = 0
+    total_bytes_received = 0
     file_name = input("File name: ")
-    file_name_bytes = file_name.encode('utf-8')
-    server_IP = sys.argv[2]
-    client_IP = sys.argv[1]
-    client_rcv_socket.bind((client_IP, CLIENT_RECEIVING_PORT))
-    send_udp(client_snd_socket, file_name_bytes, client_IP, server_IP,
-             SERVER_PORT, CLIENT_RECEIVING_PORT)
+    file_name_bytes = file_name.encode("utf-8")
+    s = create_socket()
+    # filesize = communicate_file_transfer(s, file_name_bytes, CLIENT_IP,
+    #                                      SERVER_IP, CLIENT_PORT, SERVER_PORT)
+    send_udp(s, file_name_bytes, CLIENT_IP, SERVER_IP,
+             CLIENT_PORT, SERVER_PORT, current_seq, current_ack)
 
-    # listening on the client socket to receive the file
-    payloads = receive_udp(client_rcv_socket)
+    with open('copy_' + file_name, 'wb') as f:
+        while True:
+            # receiving the file
+            packet_received = receive_udp(s, CLIENT_IP, CLIENT_PORT)
+            payload = extract_payloads(packet_received)
+            if not payload:
+                continue
 
-    # make a copy of the received file
-    received_file_bytes = b''.join(payload for payload in payloads)
-    new_file_name = "copy_" + file_name
-    save_bytes_to_file(received_file_bytes, new_file_name)
+            if payload[1] == -1 and payload[0] == b'FIN':
+                print("Received end-of-transfer signal")
+                send_udp(s,b'FIN', CLIENT_IP, SERVER_IP,
+             CLIENT_PORT, SERVER_PORT, current_seq, -1)
+                break
 
-    # send the success message to the server
-    result = "success" + str(len(payloads))
-    received_packets_result = result.encode('utf-8')
-    send_udp(client_snd_socket, received_packets_result, client_IP, server_IP,
-             SERVER_PORT, CLIENT_RECEIVING_PORT)
-    print(f"Saved the received file to {new_file_name}.")
+            if payload[1] == current_ack:
+                current_ack += 1
+                f.write(payload[0])
+                total_bytes_received += len(payload[0])
+                print(f"Received packet {payload[1]}")
+                # send ack every 5 packets
+                if current_ack % 5 == 0:
+                    send_udp(s, b"ACK", CLIENT_IP, SERVER_IP,
+                             CLIENT_PORT, SERVER_PORT, current_seq, current_ack)
+            else:
+                print(f"Received packet {payload[1]} but expected {current_ack + 1}")
+                send_udp(s, b"ACK", CLIENT_IP, SERVER_IP,
+                         CLIENT_PORT, SERVER_PORT, current_seq, current_ack)
 
+
+    # result = "success" + str(filesize)
+    # received_packets_result = result.encode("utf-8")
+    # sleep(2)
+    # send_udp(s, received_packets_result, CLIENT_IP, SERVER_IP,
+    #          CLIENT_PORT, SERVER_PORT, current_seq, current_ack)
+
+    # print(f"Saved the received file to copy_{file_name}.")
+    s.close()
 
 if __name__ == "__main__":
     main()
