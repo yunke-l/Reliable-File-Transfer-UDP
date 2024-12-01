@@ -7,11 +7,11 @@ import socket
 from struct import pack, unpack
 import struct
 
-# CLIENT_IP = "172.31.27.101"
-# SERVER_IP = "172.31.31.50"
+CLIENT_IP = "172.31.21.219"
+SERVER_IP = "172.31.21.112"
 
-CLIENT_IP = "127.0.0.1"
-SERVER_IP = "127.0.0.1"
+# CLIENT_IP = "127.0.0.1"
+# SERVER_IP = "127.0.0.1"
 
 CLIENT_PORT = 3434
 SERVER_PORT = 50100
@@ -91,7 +91,7 @@ def receive_udp(passed_socket, ip, port):
             print("Cannot bind socket. Error Code : " + str(msg[0]) + " Message " + msg[1])
             sys.exit()
 
-    print(f"Listening on port {port}")
+    # print(f"Listening on port {port}")
     try:
         data, addr = receiving_socket.recvfrom(65535)
     except KeyboardInterrupt:
@@ -144,15 +144,11 @@ def extract_payloads(packet):
     }
     str_ip_saddr = socket.inet_ntoa(ip_fields["ip_saddr"])
     str_ip_daddr = socket.inet_ntoa(ip_fields["ip_daddr"])
-    print(f"IP: {str_ip_saddr} -> {str_ip_daddr} with packets "
-          f"of length {ip_fields['ip_tot_len']}\n")
     # if the packet is not from the server or to the client,
     if str_ip_saddr != CLIENT_IP or str_ip_daddr != SERVER_IP:
-        print('Not from the client or to the server')
         return None
     # if the packet is not from the client port or to the server port,
     if udp_fields["source_port"] != CLIENT_PORT or udp_fields["dest_port"] != SERVER_PORT:
-        print('Not from the client port or to the server port')
         return None
     # with open('dataTransferAtS.txt', 'a') as f:
     #     f.write(f"UDP: receiving from {addr[0]}:{udp_fields['source_port']} "
@@ -162,7 +158,6 @@ def extract_payloads(packet):
     #     f.write(f"{udp_fields['seq_number']},")
 
     payload = data[36:]
-    print(f"received {udp_fields['seq_number']}")
 
     return [payload, udp_fields["seq_number"], udp_fields["ack_number"]]
 
@@ -175,7 +170,6 @@ def send_udp(passed_socket, payload: bytes, src_ip, dst_ip,
                                    payload, seq_number, ack_number)
 
     packet = ip_header + udp_header + payload
-    print(f"Sending to {dst_ip}:{dst_port} with length {len(packet)}")
     passed_socket.sendto(packet, (dst_ip, 0))
 
 def read_file_in_chunks(file_name, seq_number, chunk_size=CHUNK_SIZE):
@@ -195,52 +189,6 @@ def load_file_as_bytes(filename):
         file_content_bytes = file.read()
         return file_content_bytes
 
-
-# def main():
-#     current_seq = 0
-#     current_ack = 0
-#     s = create_socket()
-#     filename = ''
-
-#     start_time = time.time()  # record start time
-
-#     while True:
-#         # listening for the client request
-#         request = receive_udp(s, SERVER_IP, SERVER_PORT)
-#         request_payload = extract_payloads(request)
-#         if not request_payload:
-#             continue
-
-#         if request_payload[2] == -1:
-#             print("all packets received")
-#             break
-
-#         # receiving request for file transfer when seq_number is 0 and ack_number is 0
-#         if request_payload[1] == 0 and request_payload[2] == 1:
-#             print("Received request for file transfer")
-#             filename_bytes = request_payload[0]
-#             filename = filename_bytes.decode("utf-8")
-#             current_seq = request_payload[2]
-#             if not file_exists(filename):
-#                 print("File not exist system close")
-#                 with open("downloadLog.txt", "w") as f:
-#                     f.write("File does not exist!")
-#                 sys.exit(0)
-
-#         # update current_ack
-#         if request_payload[2] > current_ack:
-#             current_ack = request_payload[2]
-#         if filename:
-#             for i in range(BATCH_SIZE):
-#                 packet_seq = current_seq+i
-#                 data = read_file_in_chunks(filename, packet_seq)
-#                 if not data:
-#                     print("End of file reached")
-#                     send_udp(s, b'FIN', SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, -1, -1)
-#                     break
-#                 send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, packet_seq, current_ack)
-#             current_seq += BATCH_SIZE
-#         sleep(0.25)
 def main():
     current_seq = 0
     current_ack = 0
@@ -264,8 +212,6 @@ def main():
             current_seq = request_payload[2]
             if not file_exists(filename):
                 print("File does not exist. System closing.")
-                with open("downloadLog.txt", "w") as f:
-                    f.write("File does not exist!")
                 continue
             if file_exists(filename):
                 start_time = time.time()  # record start time after receiving the request
@@ -275,12 +221,17 @@ def main():
     with open(filename, 'rb') as file:
         seq_num = current_seq
         while not file_transfer_complete:
+            # Start the timer for the entire batch (e.g., 2 seconds)
+            fail_safe_start_time = time.time()
+            timeout = 2  # Fail-safe timeout in seconds
+
             # Send a batch of packets
             for i in range(BATCH_SIZE):
                 data = file.read(CHUNK_SIZE)
                 if not data:
-                    print("End of file reached")
+                    # Send FIN message to indicate end of file
                     send_udp(s, b'FIN', SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, -1, current_ack)
+                    file_transfer_complete = True
                     break
 
                 # Send packet
@@ -291,68 +242,65 @@ def main():
             if file_transfer_complete:
                 break
 
-            # Wait for ACK for the entire batch
-            retries = 0
-            while retries < 5:  # Allow up to 5 retries
-                try:
-                    request = receive_udp(s, SERVER_IP, SERVER_PORT)
-                    request_payload = extract_payloads(request)
-                    if not request_payload:
-                        continue
-
-                    if request_payload[2] == -1:
-                        print("All packets received successfully.")
-                        file_transfer_complete = True
-                        break
-
-                    current_ack = request_payload[2]
-                    # If we receive ACK for the entire batch (last sequence number in the batch)
-                    if current_ack >= seq_num + BATCH_SIZE - 1:
-                        print(f"Received ACK for batch ending with packet {current_ack}")
-                        break  # Go to the next batch
-                except socket.timeout:
-                    # Retransmit the entire batch if ACK is not received within the timeout
-                    retries += 1
-                    print(f"Timeout occurred. Retransmitting batch starting from packet {seq_num}. Retry {retries}/5")
+            # Wait for ACK for the entire batch with a fail-safe mechanism
+            while True:
+                # Check if the fail-safe timeout has been reached
+                if time.time() - fail_safe_start_time > timeout:
+                    print(f"Fail-safe timeout of {timeout} seconds reached. Retransmitting the batch.")
                     # Retransmit the entire batch
                     for j in range(BATCH_SIZE):
                         # Move the file pointer to the appropriate position to resend the data
                         file.seek((seq_num + j) * CHUNK_SIZE)
                         data = file.read(CHUNK_SIZE)
                         if not data:
-                            print("End of file reached")
                             send_udp(s, b'FIN', SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, -1, current_ack)
+                            file_transfer_complete = True
                             break  # End of file
                         send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, seq_num + j, current_ack)
                         print(f"Retransmitted packet with sequence number: {seq_num + j}")
+                    # Restart the fail-safe timer after retransmission
+                    fail_safe_start_time = time.time()
+                    break
 
-            if retries == 5:
-                print(f"Failed to receive ACK for batch starting from packet {seq_num}. Aborting.")
-                file_transfer_complete = True
-                break
 
-            # Update the sequence number to reflect the packets sent in the batch
-            seq_num += BATCH_SIZE
-            current_seq = seq_num
+                try:
+                    # Attempt to receive data from socket, waiting up to 0.25 seconds for an ACK
+                    request = receive_udp(s, SERVER_IP, SERVER_PORT)  # This line may raise socket.timeout
+                except socket.timeout:
+                    # Handle the timeout scenario here
+                    print(f"Timeout occurred: no ACK received within the timeout period.")
+                    # Add retransmission logic or other handling code here
+                    continue  # Restart waiting for ACKs or move to retransmit if needed
 
-    # Record end time and print time taken for the transfer
+                # Proceed only if no exception occurred
+                request_payload = extract_payloads(request)
+                if not request_payload:
+                    continue
+
+                if request_payload[2] == -1:
+                    # If the client confirms receipt of all packets
+                    print(f"All packets received for {filename} successfully.")
+                    file_transfer_complete = True
+                    break
+
+                current_ack = request_payload[2]
+                # If we receive ACK for the entire batch (last sequence number in the batch)
+                if current_ack >= seq_num + BATCH_SIZE - 1:
+                    print(f"Received ACK for batch ending with packet {current_ack}")
+                    # Update the sequence number to reflect the packets sent in the batch
+                    seq_num += BATCH_SIZE
+                    current_seq = seq_num
+                    break  # Proceed to the next batch
+
+
+
+
     end_time = time.time()  # record end time
     time_taken = int(end_time - start_time)
     time_taken_formatted = str(timedelta(seconds=time_taken))
     print(f"Time taken to transfer the file: {time_taken} seconds")
-
     # Close the socket after file transfer is complete
     s.close()
-    print("Socket closed. File transfer complete.")
-
-
-
-
-
-    end_time = time.time()  # record end time
-    time_taken = int(end_time - start_time)
-    time_taken_formatted = str(timedelta(seconds=time_taken))
-    print(f"Time taken to transfer the file: {time_taken} seconds")
 
 
 if __name__ == "__main__":
