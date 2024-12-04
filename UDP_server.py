@@ -223,9 +223,6 @@ def main():
     with open(filename, 'rb') as file:
         seq_num = current_seq
         while not file_transfer_complete:
-            # Start the timer for the entire batch (e.g., 2 seconds)
-            fail_safe_start_time = time.time()
-            timeout = 2  # Fail-safe timeout in seconds
 
             # Send a batch of packets
             for i in range(BATCH_SIZE):
@@ -245,42 +242,29 @@ def main():
             if file_transfer_complete:
                 break
 
-            # Wait for ACK for the entire batch with a fail-safe mechanism
-            while True:
-                # Check if the fail-safe timeout has been reached
-                if time.time() - fail_safe_start_time > timeout:
-                    print(f"Fail-safe timeout of {timeout} seconds reached. Retransmitting the batch.")
-                    # Restart the fail-safe timer
-                    fail_safe_start_time = time.time()
+
+            request = receive_udp(s, SERVER_IP, SERVER_PORT)
+            if not request:
+                    continue
+            else:
+                request_payload = extract_payloads(request)
+                if not request_payload:
+                    continue
+
+                if request_payload[2] == -1:
+                    # If the client confirms receipt of all packets
+                    print(f"All packets received for {filename} successfully.")
+                    file_transfer_complete = True
                     break
 
-                request = receive_udp(s, SERVER_IP, SERVER_PORT)
-                if not request:
-                    for j in range(BATCH_SIZE):
-                        file.seek((seq_num + j) * CHUNK_SIZE)
-                        data = file.read(CHUNK_SIZE)
-                        send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, seq_num + j, current_ack)
-                        print(f"Retransmitted packet with sequence number: {seq_num + j}")
-                        continue
-                else:
-                    request_payload = extract_payloads(request)
-                    if not request_payload:
-                        continue
-
-                    if request_payload[2] == -1:
-                        # If the client confirms receipt of all packets
-                        print(f"All packets received for {filename} successfully.")
-                        file_transfer_complete = True
-                        break
-
-                    current_ack = request_payload[2]
-                    # If we receive ACK for the entire batch (last sequence number in the batch)
-                    if current_ack >= seq_num + BATCH_SIZE - 1:
-                        print(f"Received ACK for batch ending with packet {current_ack}")
-                        # Update the sequence number to reflect the packets sent in the batch
-                        seq_num += BATCH_SIZE
-                        current_seq = seq_num
-                        break
+                current_ack = request_payload[2]
+                # If we receive ACK for the entire batch (last sequence number in the batch)
+                if current_ack >= seq_num + BATCH_SIZE - 1:
+                    print(f"Received ACK for batch ending with packet {current_ack}")
+                    # Update the sequence number to reflect the packets sent in the batch
+                    seq_num += BATCH_SIZE
+                    current_seq = seq_num
+                    continue
 
 
 
