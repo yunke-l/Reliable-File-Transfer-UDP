@@ -97,6 +97,8 @@ def receive_udp(passed_socket, ip, port):
     except KeyboardInterrupt:
         print("Shutting down.")
         return None
+    except socket.timeout:
+        return None
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
@@ -252,32 +254,6 @@ def main():
                     fail_safe_start_time = time.time()
                     break
 
-
-                # try:
-                #      # First timer: Wait up to 0.25 seconds for the ACK
-                #     request = receive_udp(s, SERVER_IP, SERVER_PORT)
-                #     request_payload = extract_payloads(request)
-                #     if not request_payload:
-                #         continue
-
-                #     if request_payload[2] == -1:
-                #         # If the client confirms receipt of all packets
-                #         print(f"All packets received for {filename} successfully.")
-                #         file_transfer_complete = True
-                #         break
-
-                #     current_ack = request_payload[2]
-                #     # If we receive ACK for the entire batch (last sequence number in the batch)
-                #     if current_ack >= seq_num + BATCH_SIZE - 1:
-                #         print(f"Received ACK for batch ending with packet {current_ack}")
-                #         # Update the sequence number to reflect the packets sent in the batch
-                #         seq_num += BATCH_SIZE
-                #         current_seq = seq_num
-                #         break  # Proceed to the next batch
-
-                # except socket.timeout:
-                #     # First timer timeout: No ACK received within 0.25 seconds
-                #     print(f"Timeout occurred. Waiting to retransmit batch.")
                 request = receive_udp(s, SERVER_IP, SERVER_PORT)
                 if not request:
                     for j in range(BATCH_SIZE):
