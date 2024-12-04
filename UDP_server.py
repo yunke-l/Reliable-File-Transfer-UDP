@@ -220,7 +220,7 @@ def main():
                 break  # Break out of the request listening loop
 
     # Open file and send in chunks
-    with open(filename, 'rb') as file:
+    with open(filename, 'rb') as file, open('transferLog.txt', 'w') as log_file:
         while not file_transfer_complete:
 
             # Send a batch of packets
@@ -233,7 +233,7 @@ def main():
                     break
                 # Send packet
                 send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, current_seq + i, current_ack)
-                print(f"Sent packet with sequence number: {current_seq + i}")
+                log_file.write(f"Sent packet with sequence number: {current_seq + i}\n")
 
             while current_ack <= current_seq:
                 request = receive_udp(s, SERVER_IP, SERVER_PORT)
@@ -248,7 +248,7 @@ def main():
                                 break
                             # Send packet
                             send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, current_seq + j, current_ack)
-                            print(f"Sent packet with sequence number: {current_seq + j}")
+                            log_file.write(f"Sent packet with sequence number: {current_seq + j}\n")
                         continue
                 else:
                     if request_payload[2] == -1:
@@ -260,7 +260,7 @@ def main():
                     current_ack = request_payload[2]
                     # If we receive ACK for the entire batch (last sequence number in the batch)
                     if current_ack > current_seq:
-                        print(f"Received ACK for batch ending with packet {current_ack}")
+                        log_file.write(f"Received ACK for packet with sequence number: {current_ack}\n")
                         # Update the sequence number to reflect the packets sent in the batch
                         current_seq = current_ack
                         continue
@@ -271,7 +271,6 @@ def main():
     print(f"Time taken to transfer the file: {time_taken} seconds")
     # Close the socket after file transfer is complete
     s.close()
-
 
 if __name__ == "__main__":
     main()
