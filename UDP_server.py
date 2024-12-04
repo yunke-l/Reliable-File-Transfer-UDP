@@ -221,12 +221,11 @@ def main():
 
     # Open file and send in chunks
     with open(filename, 'rb') as file:
-        seq_num = current_seq
         while not file_transfer_complete:
 
             # Send a batch of packets
             for i in range(BATCH_SIZE):
-                file.seek((seq_num + i) * CHUNK_SIZE)
+                file.seek((current_seq + i) * CHUNK_SIZE)
                 data = file.read(CHUNK_SIZE)
                 if not data:
                     # Send FIN message to indicate end of file
@@ -235,22 +234,17 @@ def main():
                     break
 
                 # Send packet
-                send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, seq_num + i, current_ack)
-                print(f"Sent packet with sequence number: {seq_num + i}")
+                send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, current_seq + i, current_ack)
+                print(f"Sent packet with sequence number: {current_seq + i}")
 
             # If file transfer is complete, exit the loop
             if file_transfer_complete:
                 break
-
-
             request = receive_udp(s, SERVER_IP, SERVER_PORT)
-            if not request:
+            request_payload = extract_payloads(request)
+            if not request or not request_payload:
                     continue
             else:
-                request_payload = extract_payloads(request)
-                if not request_payload:
-                    continue
-
                 if request_payload[2] == -1:
                     # If the client confirms receipt of all packets
                     print(f"All packets received for {filename} successfully.")
@@ -259,11 +253,10 @@ def main():
 
                 current_ack = request_payload[2]
                 # If we receive ACK for the entire batch (last sequence number in the batch)
-                if current_ack >= seq_num + BATCH_SIZE - 1:
+                if current_ack > current_seq:
                     print(f"Received ACK for batch ending with packet {current_ack}")
                     # Update the sequence number to reflect the packets sent in the batch
-                    seq_num += BATCH_SIZE
-                    current_seq = seq_num
+                    current_seq = current_ack
                     continue
 
 
