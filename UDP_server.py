@@ -32,6 +32,19 @@ def create_socket():
             + msg[1]
         )
         sys.exit()
+    try:
+        s.bind((SERVER_IP, SERVER_PORT))
+    except socket.error as msg:
+        if msg.errno == 98:
+            print("Address already in use. System closing.")
+        else:
+            print(
+                "Cannot bind socket. Error Code : "
+                + str(msg[0])
+                + " Message "
+                + msg[1]
+            )
+            sys.exit()
     return s
 
 # create the IP header
@@ -80,18 +93,8 @@ def create_UDP_header(src_port, dst_port, payload: bytes,
 
 
 # receive UDP packets
-def receive_udp(passed_socket, ip, port):
+def receive_udp(passed_socket):
     receiving_socket = passed_socket
-    try:
-        receiving_socket.bind((ip, port))
-    except socket.error as msg:
-        if msg.errno == 98:  # Address already in use
-            pass
-        else:
-            print("Cannot bind socket. Error Code : " + str(msg[0]) + " Message " + msg[1])
-            sys.exit()
-
-    # print(f"Listening on port {port}")
     try:
         data, addr = receiving_socket.recvfrom(65535)
     except KeyboardInterrupt:
@@ -201,7 +204,7 @@ def main():
 
     while True:
         # listening for the client request
-        request = receive_udp(s, SERVER_IP, SERVER_PORT)
+        request = receive_udp(s)
         request_payload = extract_payloads(request)
         if not request_payload:
             continue
@@ -236,9 +239,9 @@ def main():
                 log_file.write(f"Sent packet with sequence number: {current_seq + i}\n")
 
             while current_ack <= current_seq:
-                request = receive_udp(s, SERVER_IP, SERVER_PORT)
+                request = receive_udp(s)
                 request_payload = extract_payloads(request)
-                if not request or not request_payload:
+                if not request:
                         for j in range(BATCH_SIZE):
                             file.seek((current_seq + j) * CHUNK_SIZE)
                             data = file.read(CHUNK_SIZE)
@@ -248,8 +251,10 @@ def main():
                                 break
                             # Send packet
                             send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, current_seq + j, current_ack)
-                            log_file.write(f"Sent packet with sequence number: {current_seq + j}\n")
+                            log_file.write(f"Resent packet with sequence number: {current_seq + j}\n")
                         continue
+                if not request_payload:
+                    continue
                 else:
                     if request_payload[2] == -1:
                         # If the client confirms receipt of all packets
