@@ -227,6 +227,7 @@ def main():
 
             # Send a batch of packets
             for i in range(BATCH_SIZE):
+                file.seek((seq_num + i) * CHUNK_SIZE)
                 data = file.read(CHUNK_SIZE)
                 if not data:
                     # Send FIN message to indicate end of file
@@ -247,50 +248,64 @@ def main():
                 # Check if the fail-safe timeout has been reached
                 if time.time() - fail_safe_start_time > timeout:
                     print(f"Fail-safe timeout of {timeout} seconds reached. Retransmitting the batch.")
-                    # Retransmit the entire batch
-                    for j in range(BATCH_SIZE):
-                        # Move the file pointer to the appropriate position to resend the data
-                        file.seek((seq_num + j) * CHUNK_SIZE)
-                        data = file.read(CHUNK_SIZE)
-                        if not data:
-                            send_udp(s, b'FIN', SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, -1, current_ack)
-                            file_transfer_complete = True
-                            break  # End of file
-                        send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, seq_num + j, current_ack)
-                        print(f"Retransmitted packet with sequence number: {seq_num + j}")
-                    # Restart the fail-safe timer after retransmission
+                    # Restart the fail-safe timer
                     fail_safe_start_time = time.time()
                     break
 
 
-                try:
-                    # Attempt to receive data from socket, waiting up to 0.25 seconds for an ACK
-                    request = receive_udp(s, SERVER_IP, SERVER_PORT)  # This line may raise socket.timeout
-                except socket.timeout:
-                    # Handle the timeout scenario here
-                    print(f"Timeout occurred: no ACK received within the timeout period.")
-                    # Add retransmission logic or other handling code here
-                    continue  # Restart waiting for ACKs or move to retransmit if needed
+                # try:
+                #      # First timer: Wait up to 0.25 seconds for the ACK
+                #     request = receive_udp(s, SERVER_IP, SERVER_PORT)
+                #     request_payload = extract_payloads(request)
+                #     if not request_payload:
+                #         continue
 
-                # Proceed only if no exception occurred
-                request_payload = extract_payloads(request)
-                if not request_payload:
-                    continue
+                #     if request_payload[2] == -1:
+                #         # If the client confirms receipt of all packets
+                #         print(f"All packets received for {filename} successfully.")
+                #         file_transfer_complete = True
+                #         break
 
-                if request_payload[2] == -1:
-                    # If the client confirms receipt of all packets
-                    print(f"All packets received for {filename} successfully.")
-                    file_transfer_complete = True
-                    break
+                #     current_ack = request_payload[2]
+                #     # If we receive ACK for the entire batch (last sequence number in the batch)
+                #     if current_ack >= seq_num + BATCH_SIZE - 1:
+                #         print(f"Received ACK for batch ending with packet {current_ack}")
+                #         # Update the sequence number to reflect the packets sent in the batch
+                #         seq_num += BATCH_SIZE
+                #         current_seq = seq_num
+                #         break  # Proceed to the next batch
 
-                current_ack = request_payload[2]
-                # If we receive ACK for the entire batch (last sequence number in the batch)
-                if current_ack >= seq_num + BATCH_SIZE - 1:
-                    print(f"Received ACK for batch ending with packet {current_ack}")
-                    # Update the sequence number to reflect the packets sent in the batch
-                    seq_num += BATCH_SIZE
-                    current_seq = seq_num
-                    break  # Proceed to the next batch
+                # except socket.timeout:
+                #     # First timer timeout: No ACK received within 0.25 seconds
+                #     print(f"Timeout occurred. Waiting to retransmit batch.")
+                request = receive_udp(s, SERVER_IP, SERVER_PORT)
+                if not request:
+                    for j in range(BATCH_SIZE):
+                        file.seek((seq_num + j) * CHUNK_SIZE)
+                        data = file.read(CHUNK_SIZE)
+                        send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, seq_num + j, current_ack)
+                        print(f"Retransmitted packet with sequence number: {seq_num + j}")
+                        continue
+                else:
+                    request_payload = extract_payloads(request)
+                    if not request_payload:
+                        continue
+
+                    if request_payload[2] == -1:
+                        # If the client confirms receipt of all packets
+                        print(f"All packets received for {filename} successfully.")
+                        file_transfer_complete = True
+                        break
+
+                    current_ack = request_payload[2]
+                    # If we receive ACK for the entire batch (last sequence number in the batch)
+                    if current_ack >= seq_num + BATCH_SIZE - 1:
+                        print(f"Received ACK for batch ending with packet {current_ack}")
+                        # Update the sequence number to reflect the packets sent in the batch
+                        seq_num += BATCH_SIZE
+                        current_seq = seq_num
+                        break
+
 
 
 
