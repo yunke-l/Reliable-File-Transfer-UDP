@@ -230,38 +230,40 @@ def main():
                 if not data:
                     # Send FIN message to indicate end of file
                     send_udp(s, b'FIN', SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, -1, current_ack)
-                    file_transfer_complete = True
                     break
-
                 # Send packet
                 send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, current_seq + i, current_ack)
                 print(f"Sent packet with sequence number: {current_seq + i}")
 
-            # If file transfer is complete, exit the loop
-            if file_transfer_complete:
-                break
-            request = receive_udp(s, SERVER_IP, SERVER_PORT)
-            request_payload = extract_payloads(request)
-            if not request or not request_payload:
-                    continue
-            else:
-                if request_payload[2] == -1:
-                    # If the client confirms receipt of all packets
-                    print(f"All packets received for {filename} successfully.")
-                    file_transfer_complete = True
-                    break
+            while current_ack <= current_seq:
+                request = receive_udp(s, SERVER_IP, SERVER_PORT)
+                request_payload = extract_payloads(request)
+                if not request or not request_payload:
+                        for j in range(BATCH_SIZE):
+                            file.seek((current_seq + j) * CHUNK_SIZE)
+                            data = file.read(CHUNK_SIZE)
+                            if not data:
+                                # Send FIN message to indicate end of file
+                                send_udp(s, b'FIN', SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, -1, current_ack)
+                                break
+                            # Send packet
+                            send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, current_seq + j, current_ack)
+                            print(f"Sent packet with sequence number: {current_seq + j}")
+                        continue
+                else:
+                    if request_payload[2] == -1:
+                        # If the client confirms receipt of all packets
+                        print(f"All packets received for {filename} successfully.")
+                        file_transfer_complete = True
+                        break
 
-                current_ack = request_payload[2]
-                # If we receive ACK for the entire batch (last sequence number in the batch)
-                if current_ack > current_seq:
-                    print(f"Received ACK for batch ending with packet {current_ack}")
-                    # Update the sequence number to reflect the packets sent in the batch
-                    current_seq = current_ack
-                    continue
-
-
-
-
+                    current_ack = request_payload[2]
+                    # If we receive ACK for the entire batch (last sequence number in the batch)
+                    if current_ack > current_seq:
+                        print(f"Received ACK for batch ending with packet {current_ack}")
+                        # Update the sequence number to reflect the packets sent in the batch
+                        current_seq = current_ack
+                        continue
 
     end_time = time.time()  # record end time
     time_taken = int(end_time - start_time)
