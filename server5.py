@@ -185,7 +185,7 @@ def extract_payloads(packet):
     # check the checksum
     checksum_data = data[20:]
     computed_checksum = checksum(checksum_data)
-    if computed_checksum != 0xFFFF:
+    if computed_checksum != 0:
         print("Checksum failed")
         return None
     payload = data[36:]
