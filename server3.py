@@ -284,7 +284,8 @@ def main():
                 if request_payload:
                     if request_payload[2] == -1:
                         # If the client confirms receipt of all packets
-                        print(f"All packets received for {filename} successfully.")
+                        print(f"Client confirmed that {filename} is received.")
+                        num_of_packets_recv_by_client = request_payload[0].decode("utf-8")
                         file_transfer_complete = True
                         break
                     # Update the current ACK number
