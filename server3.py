@@ -191,14 +191,14 @@ def main():
     current_seq = 0
     current_ack = 0
     s = create_socket()
-    s.settimeout(0.25)
+    s.settimeout(0.25) # socket.recvfrom will timeout after 0.25 seconds
     filename = ''
     file_transfer_complete = False
 
     while True:
         # listening for the client request
         request = receive_udp(s)
-        request_payload = extract_payloads(request)
+        request_payload = extract_payloads(request) # data, seq_number, ack_number
         if not request_payload:
             continue
 
@@ -224,7 +224,7 @@ def main():
             timeout = 2  # Fail-safe timeout in seconds
 
             # Send a batch of packets
-            for i in range(BATCH_SIZE):
+            for i in range(BATCH_SIZE): # Send 5 packets at a time
                 file.seek((seq_num + i) * CHUNK_SIZE)
                 data = file.read(CHUNK_SIZE)
                 if not data:
@@ -249,6 +249,7 @@ def main():
                     # Restart the fail-safe timer
                     fail_safe_start_time = time.time()
                     break
+                # 0-4 packets sent, waiting for ACK=5
 
                 request = receive_udp(s)
                 if not request:
