@@ -259,10 +259,10 @@ def main():
                 )  # record start time after receiving the request
                 break  # Break out of the request listening loop
 
-    # Open file and send in chunks, open("transferLog.txt", "w") as log_file
+    # Open file and send in chunks,
     with open(filename, "rb") as file:
         while not file_transfer_complete:
-            # Start the timer for the entire batch (e.g., 2 seconds)
+            # Start the timer for the entire batch
             fail_safe_start_time = time.time()
             timeout = 2  # Fail-safe timeout in seconds
 

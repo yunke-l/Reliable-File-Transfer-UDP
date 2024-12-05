@@ -143,7 +143,6 @@ def extract_payloads(packet):
     udp_fields = {
         "source_port": udp_unpack[0],
         "dest_port": udp_unpack[1],
-        # "udp_length": udp_unpack[2],
         "seq_number": udp_unpack[3],
         "ack_number": udp_unpack[4],
         "checksum": udp_unpack[5],
@@ -153,14 +152,6 @@ def extract_payloads(packet):
     ip_header = data[:20]
     ip_unpack = unpack("!BBHHHBBH4s4s", ip_header)
     ip_fields = {
-        # "ip_ihl_ver": ip_unpack[0],
-        # "ip_tos": ip_unpack[1],
-        # "ip_tot_len": ip_unpack[2],
-        # "ip_id": ip_unpack[3],
-        # "ip_frag_off": ip_unpack[4],
-        # "ip_ttl": ip_unpack[5],
-        # "ip_proto": ip_unpack[6],
-        # "ip_check": ip_unpack[7],
         "ip_saddr": ip_unpack[8],
         "ip_daddr": ip_unpack[9],
     }
@@ -175,12 +166,6 @@ def extract_payloads(packet):
         or udp_fields["dest_port"] != SERVER_PORT
     ):
         return None
-    # with open('dataTransferAtS.txt', 'a') as f:
-    #     f.write(f"UDP: receiving from {addr[0]}:{udp_fields['source_port']} "
-    #             f"with packets of length {udp_fields['udp_length']+20}\n")
-    #     f.write(f"IP: {str_ip_saddr} -> {str_ip_daddr} "
-    #             f"with packets of length {ip_fields['ip_tot_len']}\n")
-    #     f.write(f"{udp_fields['seq_number']},")
 
     # check the checksum
     checksum_data = data[20:]
@@ -211,25 +196,16 @@ def send_udp(
     passed_socket.sendto(packet, (dst_ip, 0))
 
 
-def read_file_in_chunks(file_name, seq_number, chunk_size=CHUNK_SIZE):
-    offset = (seq_number - 1) * chunk_size
-    with open(file_name, "rb") as file:
-        file.seek(offset)
-        data = file.read(chunk_size)
-    return data
-
-
 def file_exists(filename):
     return os.path.isfile(filename)
 
 
-def load_file_as_bytes(filename):
-    with open(filename, "rb") as file:
-        file_content_bytes = file.read()
-        return file_content_bytes
-
 
 def main():
+    num_of_packets_sent = 0 # number of packets sent from the server
+    num_of_packets_retransmitted = 0 # number of retransmitted packets from the server
+    num_of_packets_recv_by_client = '' # number of packets received by the client
+    file_size = 0
     current_seq = 0
     current_ack = 0
     s = create_socket()
@@ -254,15 +230,16 @@ def main():
                 print("File does not exist. System closing.")
                 continue
             if file_exists(filename):
+                file_size = os.path.getsize(filename)
                 start_time = (
                     time.time()
                 )  # record start time after receiving the request
                 break  # Break out of the request listening loop
 
     # Open file and send in chunks
-    with open(filename, "rb") as file, open("transferLog.txt", "w") as log_file:
+    with open(filename, "rb") as file:
         while not file_transfer_complete:
-            # Start the timer for the entire batch (e.g., 2 seconds)
+            # Start the timer for the entire batch
             fail_safe_start_time = time.time()
             timeout = 2  # Fail-safe timeout in seconds
 
@@ -278,6 +255,7 @@ def main():
                         -1,
                         current_ack,
                     )
+                    num_of_packets_sent += 1
                     break
 
                 # Send packet
@@ -287,7 +265,8 @@ def main():
                     current_seq + i,
                     current_ack,
                 )
-                log_file.write(f"sending packets with seq: {current_seq + i}\n")
+                num_of_packets_sent += 1
+
 
             # Wait for ACK for the entire batch with a fail-safe mechanism
             while True:
@@ -308,9 +287,9 @@ def main():
                         print(f"All packets received for {filename} successfully.")
                         file_transfer_complete = True
                         break
+                    # Update the current ACK number
                     if request_payload[2] > current_seq:
                         current_ack = request_payload[2]
-                    log_file.write(f"Received ACK: {request_payload[2]}\n")
 
                     # If we receive ACK for the entire batch (last sequence number in the batch)
                     if current_ack >= current_seq + BATCH_SIZE - 1:
@@ -327,11 +306,9 @@ def main():
                             current_seq + j,
                             current_ack,
                         )
-                        log_file.write(
-                            f"Retransmitted packet with sequence number: {current_seq + j}\n"
-                        )
+                        num_of_packets_sent += 1
+                        num_of_packets_retransmitted += 1
                         continue
-
 
     end_time = time.time()  # record end time
     time_taken = int(end_time - start_time)
@@ -340,23 +317,16 @@ def main():
     # Close the socket after file transfer is complete
     s.close()
 
+    # write log file of the transfer
+    with open('downloadLog.txt', 'w') as f:
+        f.write(f"Name of the transferred file: {filename}\n")
+        f.write(f"Size of the transferred file: {file_size} bytes\n")
+        f.write(f"The number of packets sent from the server: {num_of_packets_sent}\n")
+        f.write(f"The number of retransmitted packets from the server: {num_of_packets_retransmitted}\n")
+        f.write(f"The number of packets received by the client: {num_of_packets_recv_by_client}\n")
+        f.write(f"Time taken to transfer the file: {time_taken_formatted}\n")
+
+
 
 if __name__ == "__main__":
     main()
-
-    # # receiving transferring result
-    # result = receive_udp(SERVER_IP, SERVER_PORT)
-
-    # result_str = result.decode("utf-8")
-    # packet_received = int(result_str[7:])
-    # print(result_str)
-
-    # # write log
-    # if 'success' in result_str:
-    #     with open('downloadLog.txt', 'w') as f:
-    #         f.write(f"Name of the transferred file: {filename}\n")
-    #         f.write(f"Size of the transferred file: {file_size} bytes\n")
-    #         f.write(f"The number of packets sent from the server: {packet_number}\n")
-    #         f.write(f"The number of retransmitted packets from the server: 0\n")
-    #         f.write(f"The number of packets received by the client: {packet_received}\n")
-    #         f.write(f"Time taken to transfer the file: {time_taken_formatted}\n")

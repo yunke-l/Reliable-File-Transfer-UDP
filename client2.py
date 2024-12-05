@@ -75,7 +75,6 @@ def create_IP_header(src_ip, dst_ip, payload: bytes):
     )
     return ip_header
 
-
 # construct UDP header
 def create_UDP_header(src_port, dst_port, payload: bytes, seq_number, ack_number):
 
@@ -104,8 +103,6 @@ def create_UDP_header(src_port, dst_port, payload: bytes, seq_number, ack_number
 # receive UDP packets
 def receive_udp(passed_socket):
     receiving_socket = passed_socket
-
-    # print(f"Listening on port {port}")
     try:
         data = receiving_socket.recv(65535)
     except KeyboardInterrupt:
@@ -116,7 +113,6 @@ def receive_udp(passed_socket):
         return None
 
     return {"data": data}
-
 
 # extract payloads from packets
 def extract_payloads(packet):
@@ -171,7 +167,6 @@ def extract_payloads(packet):
 
     return [payload, udp_fields["seq_number"], udp_fields["ack_number"]]
 
-
 def send_udp(
     passed_socket,
     payload: bytes,
@@ -189,28 +184,14 @@ def send_udp(
     passed_socket.sendto(packet, (dst_ip, 0))
 
 
-# def communicate_file_transfer(passed_socket, filename: bytes, src_ip, dst_ip,
-#                               src_port, dst_port):
-#     ip_header = create_IP_header(src_ip, dst_ip, filename)
-#     udp_header = create_UDP_header(src_port, dst_port,
-#                                    filename, -1, 0)
-#     packet = ip_header + udp_header + filename
-#     print(f"Sending to {dst_ip}:{dst_port} with length {len(packet)}")
-#     passed_socket.sendto(packet, (dst_ip, 0))
-#     filesize_data, addr =   passed_socket.recvfrom(65535)
-#     filesize = int(filesize_data.decode("utf-8"))
-#     return filesize
-
-
 def main():
     current_seq = 0
     current_ack = 0
     total_bytes_received = 0
     file_name = input("File name: ")
     file_name_bytes = file_name.encode("utf-8")
+    number_of_packets_received = 0
     s = create_socket()
-    # filesize = communicate_file_transfer(s, file_name_bytes, CLIENT_IP,
-    #                                      SERVER_IP, CLIENT_PORT, SERVER_PORT)
     send_udp(
         s,
         file_name_bytes,
@@ -226,10 +207,15 @@ def main():
             if not payload:
                 continue
 
+            # updating the number of packets received
+            number_of_packets_received += 1
+
+            # check if the file transfer is done
             if payload[1] == -1 and payload[0] == b"FIN":
+                str_number_of_packets = str(number_of_packets_received)
                 send_udp(
                     s,
-                    b"FIN",
+                    str_number_of_packets.encode("utf-8"),
                     current_seq,
                     -1,
                 )
@@ -257,13 +243,6 @@ def main():
                     current_ack,
                 )
 
-    # result = "success" + str(filesize)
-    # received_packets_result = result.encode("utf-8")
-    # sleep(2)
-    # send_udp(s, received_packets_result, CLIENT_IP, SERVER_IP,
-    #          CLIENT_PORT, SERVER_PORT, current_seq, current_ack)
-
-    # print(f"Saved the received file to copy_{file_name}.")
     s.close()
 
 
