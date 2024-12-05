@@ -278,7 +278,6 @@ def main():
                         -1,
                         current_ack,
                     )
-                    file_transfer_complete = True
                     break
 
                 # Send packet
@@ -289,10 +288,6 @@ def main():
                     current_ack,
                 )
                 log_file.write(f"sending packets with seq: {current_seq + i}\n")
-
-            # If file transfer is complete, exit the loop
-            if file_transfer_complete:
-                break
 
             # Wait for ACK for the entire batch with a fail-safe mechanism
             while True:

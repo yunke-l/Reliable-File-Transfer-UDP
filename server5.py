@@ -259,8 +259,8 @@ def main():
                 )  # record start time after receiving the request
                 break  # Break out of the request listening loop
 
-    # Open file and send in chunks
-    with open(filename, "rb") as file, open("transferLog.txt", "w") as log_file:
+    # Open file and send in chunks, open("transferLog.txt", "w") as log_file
+    with open(filename, "rb") as file:
         while not file_transfer_complete:
             # Start the timer for the entire batch (e.g., 2 seconds)
             fail_safe_start_time = time.time()
@@ -278,7 +278,6 @@ def main():
                         -1,
                         current_ack,
                     )
-                    file_transfer_complete = True
                     break
 
                 # Send packet
@@ -288,11 +287,7 @@ def main():
                     current_seq + i,
                     current_ack,
                 )
-                log_file.write(f"sending packets with seq: {current_seq + i}\n")
-
-            # If file transfer is complete, exit the loop
-            if file_transfer_complete:
-                break
+                # log_file.write(f"sending packets with seq: {current_seq + i}\n")
 
             # Wait for ACK for the entire batch with a fail-safe mechanism
             while True:
@@ -316,9 +311,9 @@ def main():
                             current_seq + j,
                             current_ack,
                         )
-                        log_file.write(
-                            f"Retransmitted packet with sequence number: {current_seq + j}\n"
-                        )
+                        # log_file.write(
+                        #     f"Retransmitted packet with sequence number: {current_seq + j}\n"
+                        # )
                         continue
                 else:
                     request_payload = extract_payloads(request)
@@ -332,7 +327,7 @@ def main():
                         break
 
                     current_ack = request_payload[2]
-                    log_file.write(f"Received ACK: {current_ack}\n")
+                    # log_file.write(f"Received ACK: {current_ack}\n")
                     # If we receive ACK for the entire batch (last sequence number in the batch)
                     if current_ack >= current_seq + BATCH_SIZE - 1:
                         # Update the sequence number to reflect the packets sent in the batch
