@@ -82,15 +82,33 @@ def create_IP_header(src_ip, dst_ip, payload: bytes):
 # construct UDP header
 def create_UDP_header(src_port, dst_port, payload: bytes,
                        seq_number, ack_number):
-    udp_src_port = src_port
-    udp_dst_port = dst_port
+
     udp_length = 16 + len(payload)
-    checksum = 0
-    udp_seq = seq_number
-    udp_ack = ack_number
-    udp_header = pack("!HHHiiH", udp_src_port, udp_dst_port,
-                      udp_length, udp_seq, udp_ack, checksum)
-    return udp_header
+    checksum_zero = 0
+    udp_header = pack(
+        "!HHHiiH",
+        src_port,
+        dst_port,
+        udp_length,
+        seq_number,
+        ack_number,
+        checksum_zero
+    )
+
+    checksum_data = udp_header + payload
+
+    computed_checksum = checksum(checksum_data)
+
+    udp_header_with_checksum = pack(
+        "!HHHiiH",
+        src_port,
+        dst_port,
+        udp_length,
+        seq_number,
+        ack_number,
+        computed_checksum
+    )
+    return udp_header_with_checksum
 
 
 # receive UDP packets
@@ -98,7 +116,7 @@ def receive_udp(passed_socket):
     receiving_socket = passed_socket
     # print(f"Listening on port {port}")
     try:
-        data, addr = receiving_socket.recvfrom(65535)
+        data = receiving_socket.recv(65535)
     except KeyboardInterrupt:
         print("Shutting down.")
         return None
@@ -108,7 +126,7 @@ def receive_udp(passed_socket):
         print(f"An error occurred: {e}")
         return None
 
-    return {"data": data, "addr": addr}
+    return {"data": data}
 
 
 # extract payloads from packets
@@ -121,6 +139,7 @@ def extract_payloads(packet):
     if len(data) < 36:  # if the packet is not a data packet,
         print("Not a data packet")
         return None
+
 
     # unpack udp header
     udp_header = data[20:36]
@@ -164,6 +183,12 @@ def extract_payloads(packet):
     #             f"with packets of length {ip_fields['ip_tot_len']}\n")
     #     f.write(f"{udp_fields['seq_number']},")
 
+    # check the checksum
+    checksum_data = data[20:]
+    computed_checksum = checksum(checksum_data)
+    if computed_checksum != udp_fields["checksum"]:
+        print("Checksum failed")
+        return None
     payload = data[36:]
 
     return [payload, udp_fields["seq_number"], udp_fields["ack_number"]]
