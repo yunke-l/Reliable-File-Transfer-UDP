@@ -11,6 +11,7 @@ SERVER_IP = "172.31.21.112"
 CLIENT_PORT = 3434
 SERVER_PORT = 50100
 
+
 # creating socket
 def create_socket():
     try:
@@ -24,7 +25,25 @@ def create_socket():
             + msg[1]
         )
         sys.exit()
+    try:
+        s.bind((CLIENT_IP, CLIENT_PORT))
+    except socket.error as msg:
+        print("Bind failed. Error: " + str(msg[0]) + ": " + msg[1])
+        sys.exit()
     return s
+
+
+# calculate checksum for the given data
+def checksum(data):
+    if len(data) % 2 != 0:
+        data += b"\x00"
+    res = sum(
+        int.from_bytes(data[i : i + 2], byteorder="big") for i in range(0, len(data), 2)
+    )
+    res = (res >> 16) + (res & 0xFFFF)
+    res = res + (res >> 16)
+    return (~res) & 0xFFFF
+
 
 # create the IP header
 def create_IP_header(src_ip, dst_ip, payload: bytes):
@@ -56,34 +75,39 @@ def create_IP_header(src_ip, dst_ip, payload: bytes):
     )
     return ip_header
 
+
 # construct UDP header
-def create_UDP_header(src_port, dst_port, payload: bytes,
-                      seq_number, ack_number):
-    udp_src_port = src_port
-    udp_dst_port = dst_port
+def create_UDP_header(src_port, dst_port, payload: bytes, seq_number, ack_number):
+
     udp_length = 16 + len(payload)
-    checksum = 0
-    udp_seq = seq_number
-    udp_ack = ack_number
-    udp_header = pack("!HHHiiH", udp_src_port, udp_dst_port,
-                      udp_length, udp_seq, udp_ack, checksum)
-    return udp_header
+    checksum_zero = 0
+    udp_header = pack(
+        "!HHHiiH", src_port, dst_port, udp_length, seq_number, ack_number, checksum_zero
+    )
+
+    checksum_data = udp_header + payload
+
+    computed_checksum = checksum(checksum_data)
+
+    udp_header_with_checksum = pack(
+        "!HHHiiH",
+        src_port,
+        dst_port,
+        udp_length,
+        seq_number,
+        ack_number,
+        computed_checksum,
+    )
+    return udp_header_with_checksum
+
 
 # receive UDP packets
-def receive_udp(passed_socket, ip, port):
+def receive_udp(passed_socket):
     receiving_socket = passed_socket
-    try:
-        receiving_socket.bind((ip, port))
-    except socket.error as msg:
-        if msg.errno == 98:  # Address already in use
-            pass
-        else:
-            print("Cannot bind socket. Error Code : " + str(msg[0]) + " Message " + msg[1])
-            sys.exit()
 
     # print(f"Listening on port {port}")
     try:
-        data, addr = receiving_socket.recvfrom(65535)
+        data = receiving_socket.recv(65535)
     except KeyboardInterrupt:
         print("Shutting down.")
         return None
@@ -91,7 +115,8 @@ def receive_udp(passed_socket, ip, port):
         print(f"An error occurred: {e}")
         return None
 
-    return {"data": data, "addr": addr}
+    return {"data": data}
+
 
 # extract payloads from packets
 def extract_payloads(packet):
@@ -99,7 +124,6 @@ def extract_payloads(packet):
         return None
 
     data = packet["data"]
-    addr = packet["addr"]
     if len(data) < 36:  # if the packet is not a data packet
         return None
 
@@ -109,7 +133,7 @@ def extract_payloads(packet):
     udp_fields = {
         "source_port": udp_unpack[0],
         "dest_port": udp_unpack[1],
-        "udp_length": udp_unpack[2],
+        # "udp_length": udp_unpack[2],
         "seq_number": udp_unpack[3],
         "ack_number": udp_unpack[4],
         "checksum": udp_unpack[5],
@@ -119,7 +143,6 @@ def extract_payloads(packet):
     ip_header = data[:20]
     ip_unpack = unpack("!BBHHHBBH4s4s", ip_header)
     ip_fields = {
-        "ip_check": ip_unpack[7],
         "ip_saddr": ip_unpack[8],
         "ip_daddr": ip_unpack[9],
     }
@@ -132,21 +155,39 @@ def extract_payloads(packet):
         return None
 
     # filtering packet: in case loopback packet
-    if udp_fields["dest_port"] != CLIENT_PORT or udp_fields["source_port"] != SERVER_PORT:
+    if (
+        udp_fields["dest_port"] != CLIENT_PORT
+        or udp_fields["source_port"] != SERVER_PORT
+    ):
         return None
 
+    # check the checksum
+    checksum_data = data[20:]
+    computed_checksum = checksum(checksum_data)
+    if computed_checksum != udp_fields["checksum"]:
+        print("Checksum failed")
+        return None
     payload = data[36:]
 
     return [payload, udp_fields["seq_number"], udp_fields["ack_number"]]
 
-def send_udp(passed_socket, payload: bytes, src_ip, dst_ip,
-             src_port, dst_port, seq_number, ack_number):
+
+def send_udp(
+    passed_socket,
+    payload: bytes,
+    seq_number,
+    ack_number,
+    src_ip=CLIENT_IP,
+    dst_ip=SERVER_IP,
+    src_port=CLIENT_PORT,
+    dst_port=SERVER_PORT,
+):
     ip_header = create_IP_header(src_ip, dst_ip, payload)
-    udp_header = create_UDP_header(src_port, dst_port,
-                                   payload, seq_number, ack_number)
+    udp_header = create_UDP_header(src_port, dst_port, payload, seq_number, ack_number)
 
     packet = ip_header + udp_header + payload
     passed_socket.sendto(packet, (dst_ip, 0))
+
 
 # def communicate_file_transfer(passed_socket, filename: bytes, src_ip, dst_ip,
 #                               src_port, dst_port):
@@ -160,6 +201,7 @@ def send_udp(passed_socket, payload: bytes, src_ip, dst_ip,
 #     filesize = int(filesize_data.decode("utf-8"))
 #     return filesize
 
+
 def main():
     current_seq = 0
     current_ack = 0
@@ -169,34 +211,51 @@ def main():
     s = create_socket()
     # filesize = communicate_file_transfer(s, file_name_bytes, CLIENT_IP,
     #                                      SERVER_IP, CLIENT_PORT, SERVER_PORT)
-    send_udp(s, file_name_bytes, CLIENT_IP, SERVER_IP,
-             CLIENT_PORT, SERVER_PORT, current_seq, current_ack)
+    send_udp(
+        s,
+        file_name_bytes,
+        current_seq,
+        current_ack,
+    )
 
-    with open('copy_' + file_name, 'wb') as f:
+    with open("copy_" + file_name, "wb") as f:
         while True:
             # receiving the file
-            packet_received = receive_udp(s, CLIENT_IP, CLIENT_PORT)
+            packet_received = receive_udp(s)
             payload = extract_payloads(packet_received)
             if not payload:
                 continue
 
-            if payload[1] == -1 and payload[0] == b'FIN':
-                send_udp(s,b'FIN', CLIENT_IP, SERVER_IP,
-             CLIENT_PORT, SERVER_PORT, current_seq, -1)
+            if payload[1] == -1 and payload[0] == b"FIN":
+                send_udp(
+                    s,
+                    b"FIN",
+                    current_seq,
+                    -1,
+                )
                 break
 
-            if payload[1] == current_ack:
+            if (
+                payload[1] == current_ack
+            ):  # payload{1] is seq number of the packet from server
                 current_ack += 1
                 f.write(payload[0])
                 total_bytes_received += len(payload[0])
                 # send ack every 5 packets
                 if current_ack % 5 == 0:
-                    send_udp(s, b"ACK", CLIENT_IP, SERVER_IP,
-                             CLIENT_PORT, SERVER_PORT, current_seq, current_ack)
+                    send_udp(
+                        s,
+                        b"ACK",
+                        current_seq,
+                        current_ack,
+                    )
             else:
-                send_udp(s, b"ACK", CLIENT_IP, SERVER_IP,
-                         CLIENT_PORT, SERVER_PORT, current_seq, current_ack)
-
+                send_udp(
+                    s,
+                    b"ACK",
+                    current_seq,
+                    current_ack,
+                )
 
     # result = "success" + str(filesize)
     # received_packets_result = result.encode("utf-8")
@@ -206,6 +265,7 @@ def main():
 
     # print(f"Saved the received file to copy_{file_name}.")
     s.close()
+
 
 if __name__ == "__main__":
     main()

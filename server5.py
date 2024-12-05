@@ -19,6 +19,7 @@ SERVER_PORT = 50100
 CHUNK_SIZE = 1300
 BATCH_SIZE = 5
 
+
 # creating socket
 def create_socket():
     try:
@@ -39,14 +40,18 @@ def create_socket():
         sys.exit()
     return s
 
+
 # calculate checksum for the given data
 def checksum(data):
     if len(data) % 2 != 0:
         data += b"\x00"
-    res = sum(int.from_bytes(data[i : i + 2], byteorder="big") for i in range(0, len(data), 2))
+    res = sum(
+        int.from_bytes(data[i : i + 2], byteorder="big") for i in range(0, len(data), 2)
+    )
     res = (res >> 16) + (res & 0xFFFF)
     res = res + (res >> 16)
     return (~res) & 0xFFFF
+
 
 # create the IP header
 def create_IP_header(src_ip, dst_ip, payload: bytes):
@@ -80,19 +85,12 @@ def create_IP_header(src_ip, dst_ip, payload: bytes):
 
 
 # construct UDP header
-def create_UDP_header(src_port, dst_port, payload: bytes,
-                       seq_number, ack_number):
+def create_UDP_header(src_port, dst_port, payload: bytes, seq_number, ack_number):
 
     udp_length = 16 + len(payload)
     checksum_zero = 0
     udp_header = pack(
-        "!HHHiiH",
-        src_port,
-        dst_port,
-        udp_length,
-        seq_number,
-        ack_number,
-        checksum_zero
+        "!HHHiiH", src_port, dst_port, udp_length, seq_number, ack_number, checksum_zero
     )
 
     checksum_data = udp_header + payload
@@ -106,7 +104,7 @@ def create_UDP_header(src_port, dst_port, payload: bytes,
         udp_length,
         seq_number,
         ack_number,
-        computed_checksum
+        computed_checksum,
     )
     return udp_header_with_checksum
 
@@ -135,11 +133,9 @@ def extract_payloads(packet):
         return None
 
     data = packet["data"]
-    addr = packet["addr"]
     if len(data) < 36:  # if the packet is not a data packet,
         print("Not a data packet")
         return None
-
 
     # unpack udp header
     udp_header = data[20:36]
@@ -147,7 +143,7 @@ def extract_payloads(packet):
     udp_fields = {
         "source_port": udp_unpack[0],
         "dest_port": udp_unpack[1],
-        "udp_length": udp_unpack[2],
+        # "udp_length": udp_unpack[2],
         "seq_number": udp_unpack[3],
         "ack_number": udp_unpack[4],
         "checksum": udp_unpack[5],
@@ -157,14 +153,14 @@ def extract_payloads(packet):
     ip_header = data[:20]
     ip_unpack = unpack("!BBHHHBBH4s4s", ip_header)
     ip_fields = {
-        "ip_ihl_ver": ip_unpack[0],
-        "ip_tos": ip_unpack[1],
-        "ip_tot_len": ip_unpack[2],
-        "ip_id": ip_unpack[3],
-        "ip_frag_off": ip_unpack[4],
-        "ip_ttl": ip_unpack[5],
-        "ip_proto": ip_unpack[6],
-        "ip_check": ip_unpack[7],
+        # "ip_ihl_ver": ip_unpack[0],
+        # "ip_tos": ip_unpack[1],
+        # "ip_tot_len": ip_unpack[2],
+        # "ip_id": ip_unpack[3],
+        # "ip_frag_off": ip_unpack[4],
+        # "ip_ttl": ip_unpack[5],
+        # "ip_proto": ip_unpack[6],
+        # "ip_check": ip_unpack[7],
         "ip_saddr": ip_unpack[8],
         "ip_daddr": ip_unpack[9],
     }
@@ -174,7 +170,10 @@ def extract_payloads(packet):
     if str_ip_saddr != CLIENT_IP or str_ip_daddr != SERVER_IP:
         return None
     # if the packet is not from the client port or to the server port,
-    if udp_fields["source_port"] != CLIENT_PORT or udp_fields["dest_port"] != SERVER_PORT:
+    if (
+        udp_fields["source_port"] != CLIENT_PORT
+        or udp_fields["dest_port"] != SERVER_PORT
+    ):
         return None
     # with open('dataTransferAtS.txt', 'a') as f:
     #     f.write(f"UDP: receiving from {addr[0]}:{udp_fields['source_port']} "
@@ -194,18 +193,26 @@ def extract_payloads(packet):
     return [payload, udp_fields["seq_number"], udp_fields["ack_number"]]
 
 
-def send_udp(passed_socket, payload: bytes, src_ip, dst_ip,
-             src_port, dst_port, seq_number, ack_number):
+def send_udp(
+    passed_socket,
+    payload: bytes,
+    seq_number,
+    ack_number,
+    src_ip=SERVER_IP,
+    dst_ip=CLIENT_IP,
+    src_port=SERVER_PORT,
+    dst_port=CLIENT_PORT,
+):
 
     ip_header = create_IP_header(src_ip, dst_ip, payload)
-    udp_header = create_UDP_header(src_port, dst_port,
-                                   payload, seq_number, ack_number)
+    udp_header = create_UDP_header(src_port, dst_port, payload, seq_number, ack_number)
 
     packet = ip_header + udp_header + payload
     passed_socket.sendto(packet, (dst_ip, 0))
 
+
 def read_file_in_chunks(file_name, seq_number, chunk_size=CHUNK_SIZE):
-    offset = (seq_number - 1)* chunk_size
+    offset = (seq_number - 1) * chunk_size
     with open(file_name, "rb") as file:
         file.seek(offset)
         data = file.read(chunk_size)
@@ -221,12 +228,13 @@ def load_file_as_bytes(filename):
         file_content_bytes = file.read()
         return file_content_bytes
 
+
 def main():
     current_seq = 0
     current_ack = 0
     s = create_socket()
     s.settimeout(0.25)
-    filename = ''
+    filename = ""
     file_transfer_complete = False
 
     while True:
@@ -246,11 +254,13 @@ def main():
                 print("File does not exist. System closing.")
                 continue
             if file_exists(filename):
-                start_time = time.time()  # record start time after receiving the request
+                start_time = (
+                    time.time()
+                )  # record start time after receiving the request
                 break  # Break out of the request listening loop
 
     # Open file and send in chunks
-    with open(filename, 'rb') as file, open('transferLog.txt','w') as log_file:
+    with open(filename, "rb") as file, open("transferLog.txt", "w") as log_file:
         seq_num = current_seq
         while not file_transfer_complete:
             # Start the timer for the entire batch (e.g., 2 seconds)
@@ -263,12 +273,22 @@ def main():
                 data = file.read(CHUNK_SIZE)
                 if not data:
                     # Send FIN message to indicate end of file
-                    send_udp(s, b'FIN', SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, -1, current_ack)
+                    send_udp(
+                        s,
+                        b"FIN",
+                        -1,
+                        current_ack,
+                    )
                     file_transfer_complete = True
                     break
 
                 # Send packet
-                send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, seq_num + i, current_ack)
+                send_udp(
+                    s,
+                    data,
+                    seq_num + i,
+                    current_ack,
+                )
                 log_file.write(f"sending packets with seq: {current_seq + i}\n")
 
             # If file transfer is complete, exit the loop
@@ -279,7 +299,9 @@ def main():
             while True:
                 # Check if the fail-safe timeout has been reached
                 if time.time() - fail_safe_start_time > timeout:
-                    print(f"Fail-safe timeout of {timeout} seconds reached. Retransmitting the batch.")
+                    print(
+                        f"Fail-safe timeout of {timeout} seconds reached. Retransmitting the batch."
+                    )
                     # Restart the fail-safe timer
                     fail_safe_start_time = time.time()
                     break
@@ -289,8 +311,15 @@ def main():
                     for j in range(BATCH_SIZE):
                         file.seek((seq_num + j) * CHUNK_SIZE)
                         data = file.read(CHUNK_SIZE)
-                        send_udp(s, data, SERVER_IP, CLIENT_IP, SERVER_PORT, CLIENT_PORT, seq_num + j, current_ack)
-                        log_file.write(f"Retransmitted packet with sequence number: {seq_num + j}\n")
+                        send_udp(
+                            s,
+                            data,
+                            seq_num + j,
+                            current_ack,
+                        )
+                        log_file.write(
+                            f"Retransmitted packet with sequence number: {seq_num + j}\n"
+                        )
                         continue
                 else:
                     request_payload = extract_payloads(request)
@@ -312,10 +341,6 @@ def main():
                         current_seq = seq_num
                         break
 
-
-
-
-
     end_time = time.time()  # record end time
     time_taken = int(end_time - start_time)
     time_taken_formatted = str(timedelta(seconds=time_taken))
@@ -326,11 +351,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
 
     # # receiving transferring result
     # result = receive_udp(SERVER_IP, SERVER_PORT)
