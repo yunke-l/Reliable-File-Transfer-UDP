@@ -261,7 +261,6 @@ def main():
 
     # Open file and send in chunks
     with open(filename, "rb") as file, open("transferLog.txt", "w") as log_file:
-        seq_num = current_seq
         while not file_transfer_complete:
             # Start the timer for the entire batch (e.g., 2 seconds)
             fail_safe_start_time = time.time()
@@ -269,7 +268,7 @@ def main():
 
             # Send a batch of packets
             for i in range(BATCH_SIZE):
-                file.seek((seq_num + i) * CHUNK_SIZE)
+                file.seek((current_seq + i) * CHUNK_SIZE)
                 data = file.read(CHUNK_SIZE)
                 if not data:
                     # Send FIN message to indicate end of file
@@ -286,7 +285,7 @@ def main():
                 send_udp(
                     s,
                     data,
-                    seq_num + i,
+                    current_seq + i,
                     current_ack,
                 )
                 log_file.write(f"sending packets with seq: {current_seq + i}\n")
@@ -309,16 +308,16 @@ def main():
                 request = receive_udp(s)
                 if not request:
                     for j in range(BATCH_SIZE):
-                        file.seek((seq_num + j) * CHUNK_SIZE)
+                        file.seek((current_seq + j) * CHUNK_SIZE)
                         data = file.read(CHUNK_SIZE)
                         send_udp(
                             s,
                             data,
-                            seq_num + j,
+                            current_seq + j,
                             current_ack,
                         )
                         log_file.write(
-                            f"Retransmitted packet with sequence number: {seq_num + j}\n"
+                            f"Retransmitted packet with sequence number: {current_seq + j}\n"
                         )
                         continue
                 else:
@@ -335,10 +334,9 @@ def main():
                     current_ack = request_payload[2]
                     log_file.write(f"Received ACK: {current_ack}\n")
                     # If we receive ACK for the entire batch (last sequence number in the batch)
-                    if current_ack >= seq_num + BATCH_SIZE - 1:
+                    if current_ack >= current_seq + BATCH_SIZE - 1:
                         # Update the sequence number to reflect the packets sent in the batch
-                        seq_num += BATCH_SIZE
-                        current_seq = seq_num
+                        current_seq += BATCH_SIZE
                         break
 
     end_time = time.time()  # record end time
