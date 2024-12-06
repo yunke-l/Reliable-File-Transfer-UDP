@@ -50,13 +50,13 @@ class UDPServer:
             if request_payload[1] == 0 and request_payload[2] == 0:
                 print("Received request for file transfer")
                 filename_bytes = request_payload[0]
-                self.filename = filename_bytes.decode("utf-8")
-                self.current_seq = request_payload[2]
-                if not os.path.isfile(self.filename):
+                if not os.path.isfile(filename_bytes.decode("utf-8")):
                     self.send_packet(b"File does not exist.", -1, self.current_ack)
                     print("File does not exist.")
                     self.start_time = time.time()
                     break
+                self.filename = filename_bytes.decode("utf-8")
+                self.current_seq = request_payload[2]
                 self.file_size = os.path.getsize(self.filename)
                 self.start_time = time.time()
                 break

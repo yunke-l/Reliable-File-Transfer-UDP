@@ -72,7 +72,7 @@ class UDPClient:
 
     def run(self):
         self.send_request()
-        self.receive_file(self.file_name)
+        self.receive_file()
         self.socket.close_socket()
 
 
