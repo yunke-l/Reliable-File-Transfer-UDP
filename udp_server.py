@@ -28,6 +28,7 @@ class UDPServer:
         self.file_size = 0
         self.file_transfer_complete = False
         self.timeout = 2
+        self.filename = ''
 
     def send_packet(self, payload, seq_number, ack_number):
         ip_header = PacketBuilder.create_ip_header(self.server_ip, self.client_ip, payload)
