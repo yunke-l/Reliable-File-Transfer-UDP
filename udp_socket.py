@@ -15,6 +15,7 @@ class UDPSocket:
             print(f"Socket could not be created. Error Code : {msg[0]} Message {msg[1]}")
             sys.exit()
         try:
+            s.settimeout(0.25)
             s.bind((self.ip, self.port))
         except socket.error as msg:
             print(f"Bind failed. Error: {msg[0]}: {msg[1]}")
