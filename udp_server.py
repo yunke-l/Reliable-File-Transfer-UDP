@@ -53,13 +53,17 @@ class UDPServer:
                 self.filename = filename_bytes.decode("utf-8")
                 self.current_seq = request_payload[2]
                 if not os.path.isfile(self.filename):
-                    print("File does not exist. System closing.")
-                    continue
+                    self.send_packet(b"File does not exist.", -1, self.current_ack)
+                    print("File does not exist.")
+                    self.start_time = time.time()
+                    break
                 self.file_size = os.path.getsize(self.filename)
                 self.start_time = time.time()
                 break
 
     def transfer_file(self):
+        if not self.filename:
+            return
         with open(self.filename, "rb") as file:
             while not self.file_transfer_complete:
                 fail_safe_start_time = time.time()

@@ -23,6 +23,7 @@ class UDPClient:
         self.total_bytes_received = 0
         self.number_of_packets_received = 0
         self.file_transfer_complete = False
+        self.file_name = ""
 
     def send_packet(self, payload, seq_number, ack_number):
         ip_header = PacketBuilder.create_ip_header(self.client_ip, self.server_ip, payload)
@@ -32,9 +33,14 @@ class UDPClient:
         packet = ip_header + udp_header + payload
         self.socket.send_udp(packet, self.server_ip)
 
-    def receive_file(self, file_name):
-        self.send_packet(file_name.encode("utf-8"), self.current_seq, self.current_ack)
-        with open("copy_" + file_name, "wb") as f:
+    def send_request(self):
+        self.file_name = input("File name: ")
+        self.send_packet(self.file_name.encode("utf-8"), self.current_seq, self.current_ack)
+
+
+    def receive_file(self):
+
+        with open("copy_" + self.file_name, "wb") as f:
             while not self.file_transfer_complete:
                 packet_received = self.socket.receive_udp()
                 payload = PacketHandler.extract_payloads(
@@ -44,6 +50,10 @@ class UDPClient:
                     continue
 
                 self.number_of_packets_received += 1
+
+                if payload[1] == -1 and payload[0] == b"File does not exist.":
+                    print("File does not exist.")
+                    break
 
                 if payload[1] == -1 and payload[0] == b"FIN":
                     str_number_of_packets = str(self.number_of_packets_received)
@@ -61,8 +71,8 @@ class UDPClient:
                     self.send_packet(b"ACK", self.current_seq, self.current_ack)
 
     def run(self):
-        file_name = input("File name: ")
-        self.receive_file(file_name)
+        self.send_request()
+        self.receive_file(self.file_name)
         self.socket.close_socket()
 
 
