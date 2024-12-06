@@ -73,7 +73,7 @@ class UDPServer:
                     data = file.read(CHUNK_SIZE)
                     if not data:
                         self.send_packet(b"FIN", -1, self.current_ack)
-                        return
+                        break 
                     self.send_packet(data, self.current_seq + i, self.current_ack)
 
                 while True:
@@ -82,7 +82,7 @@ class UDPServer:
                             f"Fail-safe timeout of {self.timeout} seconds reached. Retransmitting the batch."
                         )
                         fail_safe_start_time = time.time()
-                        break
+                        return   
 
                     request = self.socket.receive_udp()
                     request_payload = PacketHandler.extract_payloads(
