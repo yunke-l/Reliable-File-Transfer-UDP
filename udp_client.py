@@ -56,6 +56,7 @@ class UDPClient:
                     break
 
                 if payload[1] == -1 and payload[0] == b"FIN":
+                    print("File transfer complete: sent: " + str(self.number_of_packets_received))
                     str_number_of_packets = str(self.number_of_packets_received)
                     self.send_packet(str_number_of_packets.encode("utf-8"), self.current_seq, -1)
                     self.file_transfer_complete = True
